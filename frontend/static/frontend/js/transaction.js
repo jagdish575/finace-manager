@@ -34,7 +34,7 @@ async function addTransaction(event) {
 
     const newTransaction = {
         date: safeQuery('#transactionDate')?.value,
-        category_id: safeQuery('#transactionCategory')?.value,
+        category: safeQuery('#transactionCategory')?.value,
         amount: parseFloat(safeQuery('#transactionAmount')?.value || 0),
         currency: safeQuery('#transactionCurrency')?.value,
         description: safeQuery('#transactionDescription')?.value,
@@ -139,7 +139,7 @@ function renderTransactions() {
         <tr class="border-b last:border-b-0">
             <td class="px-4 py-4 text-slate-700">${t.date || '-'}</td>
             <td class="px-4 py-4 text-slate-700">${t.category_type || t.category_name || '-'}</td>
-            <td class="px-4 py-4 text-right font-semibold text-slate-900">${typeof t.amount === 'number' ? '$' + t.amount.toFixed(2) : t.amount}</td>
+            <td class="px-4 py-4 text-right font-semibold text-slate-900">${typeof t.amount === 'number' ? t.amount.toFixed(2) : t.amount}</td>
             <td class="px-4 py-4 text-slate-700">${t.currency || '-'}</td>
             <td class="px-4 py-4 text-slate-700">${t.description || '-'}</td>
             <td class="px-4 py-4 text-center">
@@ -151,6 +151,29 @@ function renderTransactions() {
     countEl.textContent = filtered.length;
     currentPageEl.textContent = currentPage;
     totalPagesEl.textContent = totalPages;
+    renderTransactionChart(filtered);
+}
+
+function renderTransactionChart(transactions) {
+    const chartContainer = document.getElementById('chartContainer');
+    if (!chartContainer || !window.echarts) return;
+
+    const grouped = transactions.reduce((acc, transaction) => {
+        const date = transaction.date || 'Unknown';
+        acc[date] = (acc[date] || 0) + parseFloat(transaction.amount || 0);
+        return acc;
+    }, {});
+
+    const labels = Object.keys(grouped).sort();
+    const values = labels.map(date => grouped[date]);
+
+    const chart = echarts.init(chartContainer);
+    chart.setOption({
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: labels },
+        yAxis: { type: 'value' },
+        series: [{ name: 'Total', type: 'line', data: values, smooth: true }],
+    });
 }
 
 async function deleteTransaction(transactionId) {

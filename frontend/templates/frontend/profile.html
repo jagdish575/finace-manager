@@ -85,8 +85,108 @@
                         <a href="{% url 'add_transaction' %}" class="block rounded-3xl bg-brand-600 px-6 py-5 text-center text-sm font-semibold text-white transition hover:bg-brand-700">Add transaction</a>
                     </div>
                 </div>
+                <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm uppercase tracking-[0.25em] text-slate-500">Edit profile</p>
+                            <h3 class="mt-2 text-xl font-semibold text-slate-950">Update your details</h3>
+                        </div>
+                    </div>
+                    <form id="profileUpdateForm" class="mt-6 grid gap-4">
+                        <label class="space-y-2 text-sm text-slate-700">
+                            <span>Full name</span>
+                            <input id="firstName" type="text" value="{{ user.first_name }}" class="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none" />
+                        </label>
+                        <label class="space-y-2 text-sm text-slate-700">
+                            <span>Date of birth</span>
+                            <input id="dateOfBirth" type="date" value="{{ profile.date_of_birth }}" class="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none" />
+                        </label>
+                        <label class="space-y-2 text-sm text-slate-700">
+                            <span>Occupation</span>
+                            <select id="occupation" class="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none">
+                                <option value="Student" {% if profile.occupation == 'Student' %}selected{% endif %}>Student</option>
+                                <option value="Employee" {% if profile.occupation == 'Employee' %}selected{% endif %}>Employee</option>
+                                <option value="Business" {% if profile.occupation == 'Business' %}selected{% endif %}>Business</option>
+                                <option value="Retired" {% if profile.occupation == 'Retired' %}selected{% endif %}>Retired</option>
+                            </select>
+                        </label>
+                        <label class="space-y-2 text-sm text-slate-700">
+                            <span>Annual income</span>
+                            <select id="annualIncome" class="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none">
+                                <option value="<10K" {% if profile.annual_income == '<10K' %}selected{% endif %}><$10K</option>
+                                <option value="10K-50K" {% if profile.annual_income == '10K-50K' %}selected{% endif %}>$10K-$50K</option>
+                                <option value="50K-100K" {% if profile.annual_income == '50K-100K' %}selected{% endif %}>$50K-$100K</option>
+                                <option value="100K+" {% if profile.annual_income == '100K+' %}selected{% endif %}>$100K+</option>
+                            </select>
+                        </label>
+                        <label class="space-y-2 text-sm text-slate-700">
+                            <span>Preferred currency</span>
+                            <select id="preferredCurrency" class="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none">
+                                <option value="USD" {% if profile.preferred_currency == 'USD' %}selected{% endif %}>USD</option>
+                                <option value="INR" {% if profile.preferred_currency == 'INR' %}selected{% endif %}>INR</option>
+                                <option value="EUR" {% if profile.preferred_currency == 'EUR' %}selected{% endif %}>EUR</option>
+                            </select>
+                        </label>
+                        <label class="text-sm text-slate-700">
+                            <span>Phone</span>
+                            <input id="phoneNumber" type="text" value="{{ user.phone_no|default:'' }}" class="mt-2 w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none" />
+                        </label>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:justify-between">
+                            <button id="saveProfileBtn" type="button" class="rounded-full bg-brand-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">Save changes</button>
+                            <span id="profileStatus" class="text-sm text-slate-500"></span>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    async function updateProfile() {
+        const csrftoken = getCookie('csrftoken');
+        const payload = {
+            first_name: document.getElementById('firstName').value.trim(),
+            date_of_birth: document.getElementById('dateOfBirth').value || null,
+            occupation: document.getElementById('occupation').value,
+            annual_income: document.getElementById('annualIncome').value,
+            preferred_currency: document.getElementById('preferredCurrency').value,
+            financial_goal: '{{ profile.financial_goal|default:"Savings" }}',
+        };
+
+        try {
+            const response = await fetch('/users/profile/', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                throw new Error('Unable to update profile.');
+            }
+
+            document.getElementById('profileStatus').textContent = 'Profile updated successfully.';
+            setTimeout(() => {
+                document.getElementById('profileStatus').textContent = '';
+                window.location.reload();
+            }, 900);
+        } catch (error) {
+            console.error(error);
+            document.getElementById('profileStatus').textContent = 'Failed to save profile. Please try again.';
+        }
+    }
+
+    document.getElementById('saveProfileBtn').addEventListener('click', updateProfile);
+</script>
 {% endblock %}

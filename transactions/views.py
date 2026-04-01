@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -58,21 +59,22 @@ def confirm_voice_transaction(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_transactions(request):
-    transactions = Transaction.objects.select_related('category').all().order_by('-date')[:10]  # Fetch latest 10 transactions
+    transactions = Transaction.objects.filter(user=request.user).select_related('category').order_by('-date')[:10]
 
     data = [
         {
             "id": t.id,
-            "category_name": t.category.name,  # Fetch category name
-            "category_type": t.category_type,  # Income or Expense
-            "description": t.description,
+            "category_name": t.category.name if t.category else "Uncategorized",
+            "category_type": t.category_type,
+            "description": t.description or "-",
             "amount": float(t.amount),
-            "date": t.date.isoformat(),  # Convert date to JSON format
+            "date": t.date.isoformat(),
+            "currency": t.currency,
         }
         for t in transactions
     ]
-    
     return JsonResponse(data, safe=False)
 
 
@@ -149,7 +151,7 @@ def track_budget_history(user):
         )
 
 
-@api_view(['POST'])
+@api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def export_transactions_csv(request):
     response = HttpResponse(content_type='text/csv')
@@ -158,7 +160,7 @@ def export_transactions_csv(request):
     writer = csv.writer(response)
     writer.writerow(['ID', 'Date', 'Category', 'Amount', 'Description'])
 
-    transactions = Transaction.objects.all().values_list('id', 'date', 'category__name', 'amount', 'description')
+    transactions = Transaction.objects.filter(user=request.user).values_list('id', 'date', 'category__name', 'amount', 'description')
     for transaction in transactions:
         writer.writerow(transaction)
 
@@ -175,7 +177,7 @@ class StandardResultsSetPagination(PageNumberPagination):
 # View for listing and creating transactions
 class TransactionListCreateView(generics.ListCreateAPIView):
     serializer_class = TransactionSerializer
-    pagination_class = StandardResultsSetPagination
+    pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['description']
     ordering_fields = ['date', 'amount']
@@ -183,7 +185,12 @@ class TransactionListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return Transaction.objects.none()
+
         queryset = Transaction.objects.filter(user_id=user.id).order_by('-date')
+        
+        # Filtering
         category = self.request.query_params.get('category', None)
         min_amount = self.request.query_params.get('min_amount', None)
         date = self.request.query_params.get('date', None)
@@ -195,8 +202,36 @@ class TransactionListCreateView(generics.ListCreateAPIView):
         if date:
             queryset = queryset.filter(date=date)
 
+        # Currency Conversion
+        user_profile = Profile.objects.filter(user_id=user.id).first()
+        user_currency = user_profile.preferred_currency if user_profile else 'USD'
+        base_currency = 'USD'
+        
+        if user_currency != base_currency:
+            rate = self.get_conversion_rate(base_currency, user_currency)
+            for transaction in queryset:
+                transaction.amount *= Decimal(str(rate))
+                transaction.currency = user_currency
+        else:
+            for transaction in queryset:
+                transaction.currency = user_currency
+
         return queryset
 
+    def get_conversion_rate(self, base_currency, target_currency):
+        api_url = f"https://api.exchangerate-api.com/v4/latest/{base_currency}"
+        try:
+            response = requests.get(api_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                return data["rates"].get(target_currency, 1)
+        except requests.RequestException:
+            pass
+        return 1
+
+    def perform_create(self, serializer):
+        # This ensures the transaction is linked to the logged-in user!
+        serializer.save(user=self.request.user)
 
 
 
@@ -226,35 +261,6 @@ class CurrencyConverter(APIView):
         else:
             return Response({"error": "Invalid currency"}, status=400)
 
-
-
-class TransactionListCreateView(generics.ListCreateAPIView):
-    serializer_class = TransactionSerializer
-    pagination_class = StandardResultsSetPagination
-
-    def get_queryset(self):
-        user = self.request.user
-        queryset = Transaction.objects.filter(user_id=user.id).order_by('-date')
-
-        # Convert transactions to user’s preferred currency
-        user_profile = Profile.objects.filter(user_id=user.id).first()
-        user_currency = user_profile.preferred_currency if user_profile else 'USD'
-        base_currency = 'USD'  # Assuming transactions are stored in USD
-        
-        if user_currency != base_currency:
-            for transaction in queryset:
-                rate = self.get_conversion_rate(base_currency, user_currency)
-                transaction.amount = transaction.amount * rate  # Convert amount
-
-        return queryset
-
-    def get_conversion_rate(self, base_currency, target_currency):
-        api_url = f"https://api.exchangerate-api.com/v4/latest/{base_currency}"
-        response = requests.get(api_url)
-        if response.status_code == 200:
-            data = response.json()
-            return data["rates"].get(target_currency, 1)
-        return 1
 
 class BudgetView(generics.ListCreateAPIView):
     serializer_class = BudgetSerializer

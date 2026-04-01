@@ -256,7 +256,7 @@
                 <div class="bg-white rounded-xl shadow-md p-6">
                     <h3 class="text-xl font-semibold text-gray-800 mb-4">Expense List</h3>
                     <ul id="expenseList" class="space-y-4">
-                        {% for expense in group.expenses %}
+                        {% for expense in group.expenses.all %}
                         <li class="flex justify-between items-center bg-indigo-50 p-4 rounded-lg border border-indigo-100">
                             <div>
                                 <h4 class="font-medium text-gray-800">{{ expense.description }}</h4>

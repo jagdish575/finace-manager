@@ -22,11 +22,11 @@ def get_user_data(request):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_avatar(request):
-    user = request.user
+    profile = request.user.profile
     if 'avatar' in request.FILES:
-        user.avatar = request.FILES['avatar']
-        user.save()
-        return Response({"message": "Avatar updated successfully!", "avatar": user.avatar.url})
+        profile.avatar = request.FILES['avatar']
+        profile.save()
+        return Response({"message": "Avatar updated successfully!", "avatar": profile.avatar.url})
     return Response({"error": "No file uploaded"}, status=400)
 
 
@@ -70,6 +70,27 @@ class ProfileSetupView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return Profile.objects.get_or_create(user=self.request.user)[0]
 
+    def update(self, request, *args, **kwargs):
+        profile = self.get_object()
+        user = request.user
+        user_fields = {}
+
+        if 'first_name' in request.data:
+            user_fields['first_name'] = request.data.get('first_name')
+        if 'phone_no' in request.data:
+            user_fields['phone_no'] = request.data.get('phone_no')
+
+        serializer = self.get_serializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if user_fields:
+            for field, value in user_fields.items():
+                setattr(user, field, value)
+            user.save()
+
+        return Response(serializer.data)
+
 class FinancialInputView(generics.RetrieveUpdateAPIView):
     """Handles Financial Inputs"""
     queryset = FinancialData.objects.all()
@@ -96,11 +117,13 @@ def user_profile(request):
     """
     Fetch user profile details including avatar and username.
     """
-    user = request.user  # Get logged-in user
+    user = request.user
+    profile, _ = Profile.objects.get_or_create(user=user)
+    
     profile_data = {
         "id": user.id,
         "username": user.username,
-        "avatar": user.avatar if user.avatar else "https://via.placeholder.com/100"  # Default avatar if none
+        "avatar": profile.avatar.url if profile.avatar else "https://via.placeholder.com/100"
     }
     return JsonResponse(profile_data)
 
@@ -118,7 +141,7 @@ def user_notifications(request):
     subscription_type = "premium" if user.is_premium else "free"  # Determine subscription type based on `is_premium` field
 
     notifications = Notification.objects.filter(
-        recipient__in=["all", subscription_type, str(user.id)]
+        recipients__in=["all", subscription_type]
     ).order_by('-timestamp')
 
     notifications_list = [

@@ -26,6 +26,7 @@ STATICFILES_DIRS = [
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-%5w*&iy%bmgsd#f^_cxlpm25sh-6f@a&1si+^-1f1$@gz_awuj"
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyAcRV5nBcu9oPxHZIyBP-tKWuUHezZ9xvg')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -70,6 +71,7 @@ CELERY_TASK_SERIALIZER = "json"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     )
 }

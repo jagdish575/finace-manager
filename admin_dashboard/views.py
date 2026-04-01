@@ -207,8 +207,8 @@ def transaction_management(request):
     items_per_page = int(request.GET.get('items_per_page', 10))
 
     # Apply filters
-    if category_type in ['Income', 'Expense']:  # Use capitalized values
-        transactions = transactions.filter(category_type=category_type)
+    if category_type:
+        transactions = transactions.filter(category_type__iexact=category_type)
     if category_id:
         try:
             category_id = int(category_id)
@@ -238,23 +238,8 @@ def transaction_management(request):
     # Summary Calculations
     total_transactions = transactions.count()
 
-    total_income = transactions.aggregate(
-        total=Sum(
-            Case(
-                When(category_type='Income', then='amount'),
-                output_field=DecimalField()
-            )
-        )
-    )['total'] or 0
-
-    total_expense = transactions.aggregate(
-        total=Sum(
-            Case(
-                When(category_type='Expense', then='amount'),
-                output_field=DecimalField()
-            )
-        )
-    )['total'] or 0
+    total_income = transactions.filter(category_type__iexact='income').aggregate(total=Sum('amount'))['total'] or 0
+    total_expense = transactions.filter(category_type__iexact='expense').aggregate(total=Sum('amount'))['total'] or 0
 
     balance = total_income - total_expense
 

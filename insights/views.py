@@ -1,26 +1,52 @@
-from django.http import JsonResponse
+﻿import json
+import os
+import requests
+from datetime import datetime, timedelta
+
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from insights.utils import get_spending_insights, predict_future_spending, suggest_savings
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import SavingsGoal
-from insights.utils import track_savings_progress
 from django.db.models import Sum
-from .models import BudgetInsight
-from transactions.models import Budget, BudgetHistory
-from rest_framework import generics
+from django.http import JsonResponse
+from django.utils.timezone import now
+from django.views.decorators.csrf import csrf_exempt
+
+from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
-from django.utils.timezone import now
-from datetime import datetime, timedelta
-from django.db.models import Sum
-from rest_framework import status
-
-from notifications.models import Notification
-from django.utils.timezone import now
+from .models import BudgetInsight, SavingsGoal
 from .serializers import BudgetInsightSerializer
+from .utils import get_spending_insights, predict_future_spending, suggest_savings, track_savings_progress
+from transactions.models import Transaction, Budget, BudgetHistory, alerts
+
+GEMINI_API_KEY = getattr(settings, 'GEMINI_API_KEY', '')
+GEMINI_MODEL = "gemini-1.5-mini"
+
+
+def generate_gemini_insights(prompt_text):
+    if not GEMINI_API_KEY:
+        return None
+
+    api_url = f"https://generativelanguage.googleapis.com/v1beta2/models/{GEMINI_MODEL}:generate?key={GEMINI_API_KEY}"
+    payload = {
+        "prompt": {"text": prompt_text},
+        "temperature": 0.7,
+        "maxOutputTokens": 250,
+    }
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+        candidates = result.get("candidates", [])
+        if candidates:
+            return candidates[0].get("output", "").strip()
+    except requests.RequestException:
+        return None
+
+    return None
+
 
 @login_required
 def spending_insights_view(request):
@@ -28,11 +54,13 @@ def spending_insights_view(request):
     insights = get_spending_insights(request.user)
     return JsonResponse({"spending_insights": insights}, safe=False)
 
+
 @login_required
 def forecast_spending_view(request, category):
     """API to predict future spending for a given category."""
     forecast = predict_future_spending(request.user, category)
     return JsonResponse({"forecasted_spending": forecast})
+
 
 @login_required
 def savings_suggestions_view(request):
@@ -41,31 +69,34 @@ def savings_suggestions_view(request):
     return JsonResponse({"savings_recommendations": suggestions})
 
 
-
 @csrf_exempt
 @login_required
 def add_savings_goal(request):
     """API to create a new savings goal."""
-    if request.method == "POST":
-        data = json.loads(request.body)
-        goal = SavingsGoal.objects.create(
-            user=request.user,
-            goal_name=data["goal_name"],
-            target_amount=data["target_amount"],
-            deadline=datetime.strptime(data["deadline"], "%Y-%m-%d").date()
-        )
-        return JsonResponse({"message": "Goal created successfully!", "goal_id": goal.id})
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid request method."}, status=405)
+
+    data = json.loads(request.body)
+    goal = SavingsGoal.objects.create(
+        user=request.user,
+        goal_name=data.get("goal_name", "New Goal"),
+        target_amount=data.get("target_amount", 0),
+        deadline=datetime.strptime(data.get("deadline", now().strftime("%Y-%m-%d")), "%Y-%m-%d").date(),
+    )
+    return JsonResponse({"message": "Goal created successfully!", "goal_id": str(goal.id)})
+
 
 @login_required
 def get_savings_progress(request):
     """API to fetch user's savings goals and progress."""
-    track_savings_progress(request.user)  # Auto-update progress
-    goals = SavingsGoal.objects.filter(user=request.user).values()
+    track_savings_progress(request.user)
+    goals = SavingsGoal.objects.filter(user=request.user).values(
+        "id", "goal_name", "target_amount", "saved_amount", "deadline", "status", "created_at"
+    )
     return JsonResponse({"goals": list(goals)}, safe=False)
 
 
-
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def update_goal_savings(request):
     """API to manually update savings for a goal."""
@@ -76,90 +107,121 @@ def update_goal_savings(request):
     try:
         goal = SavingsGoal.objects.get(id=goal_id, user=user)
         goal.saved_amount = saved_amount
+        goal.update_progress()
         goal.save()
 
-        # Check if goal is completed
         if goal.saved_amount >= goal.target_amount:
-            Notifications.objects.create(
+            alerts.objects.create(
                 user=user,
                 message=f"🎉 Congratulations! You have completed your savings goal: {goal.goal_name}",
-                created_at=now(),
-                is_read=False
+                is_read=False,
             )
 
         return Response({"message": "Goal updated successfully."})
     except SavingsGoal.DoesNotExist:
-        return Response({"error": "Goal not found."}, status=404)
+        return Response({"error": "Goal not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def ai_insights(request):
-    """
-    Generates AI insights based on budget history and spending patterns.
-    """
+    """Generates AI insights based on budget history and spending patterns."""
     user = request.user
     last_30_days = now() - timedelta(days=30)
 
+    budget_history = BudgetHistory.objects.filter(user=user)
     insights = []
 
-    # Fetch spending trends from transactions
-    spending_data = (
-        Transaction.objects.filter(user_id=user.id, date__gte=last_30_days)
-        .values('category_id')
-        .annotate(total_spent=Sum('amount'))
-    )
-
-    # Fetch historical budget data
-    budget_history = BudgetHistory.objects.filter(user=user).values(
-        'category', 'previous_limit', 'actual_spent', 'suggested_limit'
-    )
-
-    # Generate AI insights based on history
     for record in budget_history:
-        category = record['category']
-        prev_limit = record['previous_limit']
-        spent = record['actual_spent']
-        suggested = record['suggested_limit']
+        category = record.category
+        prev_limit = float(record.previous_limit or 0)
+        spent = float(record.actual_spent or 0)
+        suggested = float(record.suggested_limit or 0)
 
         if spent > prev_limit:
             insights.append({
                 "title": f"Overspending in {category}",
-                "message": f"You spent ₹{spent}, exceeding your ₹{prev_limit} budget.",
+                "message": f"You spent ₹{spent:.2f}, exceeding your ₹{prev_limit:.2f} budget.",
                 "suggested_budget": suggested,
                 "category": category,
-                "action_url": "#"
+                "action_url": "#",
             })
         else:
             insights.append({
-                "title": f"Good Budget Control in {category}",
-                "message": f"You stayed within your ₹{prev_limit} budget. Suggested new budget: ₹{suggested}",
+                "title": f"Good budget control in {category}",
+                "message": f"You stayed within your ₹{prev_limit:.2f} budget. Suggested new budget: ₹{suggested:.2f}.",
                 "suggested_budget": suggested,
                 "category": category,
-                "action_url": "#"
+                "action_url": "#",
             })
+
+    if not insights:
+        insights.append({
+            "title": "Start saving smarter",
+            "message": "Add budgets or goals so AI can provide recommendations based on your spending patterns.",
+            "suggested_budget": 0,
+            "category": "General",
+            "action_url": "#",
+        })
+
+    prompt_text = (
+        "Provide three short actionable personal finance tips for a user based on recent spending habits and savings goals. "
+        "Keep the recommendations concise and friendly."
+    )
+    gemini_response = generate_gemini_insights(prompt_text)
+    if gemini_response:
+        insights.insert(0, {
+            "title": "AI-powered recommendation",
+            "message": gemini_response,
+            "suggested_budget": 0,
+            "category": "General",
+            "action_url": "#",
+        })
 
     return Response(insights)
 
-@api_view(['POST'])
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def accept_suggested_budget(request):
-    """
-    Updates the user's budget with the AI-suggested limit.
-    """
+    """Updates the user's budget with the AI-suggested limit."""
     user = request.user
     category = request.data.get("category")
     new_limit = request.data.get("new_limit")
 
-    if not category or not new_limit:
-        return Response({"error": "Missing category or new limit"}, status=400)
+    if not category or new_limit is None:
+        return Response({"error": "Missing category or new limit"}, status=status.HTTP_400_BAD_REQUEST)
 
-    budget, created = Budget.objects.get_or_create(user_id=user.id, category=category)
+    budget, _ = Budget.objects.get_or_create(user=user, category=category)
     budget.monthly_limit = new_limit
     budget.save()
 
     return Response({"message": f"Budget updated successfully for {category}!", "new_limit": new_limit})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def finance_chat(request):
+    """Finance-focused chat endpoint for the dashboard AI assistant."""
+    user = request.user
+    prompt = request.data.get("message", "").strip()
+    if not prompt:
+        return Response({"error": "Please send a valid message."}, status=status.HTTP_400_BAD_REQUEST)
+
+    assistant_prompt = (
+        "You are a helpful personal finance assistant focused on budgeting, savings, spending, and smart money management. "
+        "Give clear, friendly, actionable advice for goals, budgets, and expense control. "
+        f"User: {prompt}\nAssistant:"
+    )
+
+    reply = generate_gemini_insights(assistant_prompt)
+    if not reply:
+        reply = (
+            "I couldn't reach the AI service right now, but I can still help with finance tips. "
+            "Try asking about budgeting, saving, tracking expenses, or planning your next financial move."
+        )
+
+    return Response({"reply": reply})
 
 
 class BudgetInsightView(generics.ListAPIView):
@@ -167,32 +229,30 @@ class BudgetInsightView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return InsightsBudgetInsight.objects.filter(user_id=self.kwargs['user_id'])
+        return BudgetInsight.objects.filter(user_id=self.kwargs['user_id'])
 
 
-
-# 🚀 1️⃣ AI-Powered Smart Recommendations
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_savings_insights(request):
     """Fetch AI-based savings recommendations for the user."""
     user = request.user
-    insights = InsightsBudgetInsight.objects.filter(user_id=user.id).order_by('-created_at')
+    insights = BudgetInsight.objects.filter(user=user).order_by('-created_at')
 
     insights_list = [
         {
             "category": insight.category,
             "average_spending": float(insight.average_spending),
             "forecasted_spending": float(insight.forecasted_spending),
-            "savings_recommendation": insight.savings_recommendation
+            "savings_recommendation": insight.savings_recommendation,
         }
         for insight in insights
     ]
 
     return Response(insights_list, status=status.HTTP_200_OK)
 
-# 🚀 2️⃣ Monthly Savings Projection Chart
-@api_view(['GET'])
+
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_savings_projections(request):
     """Fetch monthly savings projections based on past spending trends."""
@@ -200,7 +260,6 @@ def get_savings_projections(request):
     current_year = now().year
     current_month = now().month
 
-    # Fetch past budget history
     budget_history = (
         BudgetHistory.objects
         .filter(user=user, year=current_year)
@@ -209,36 +268,30 @@ def get_savings_projections(request):
         .order_by('month')
     )
 
-    # Fetch current budget limit for future projection
-    future_budget = (
-        TransactionsBudget.objects
+    total_budget = (
+        Budget.objects
         .filter(user=user)
         .aggregate(total_budget=Sum('monthly_limit'))
     )['total_budget'] or 0
 
-    # Prepare projection data
     months = []
     savings_data = []
 
     for entry in budget_history:
-        month_name = datetime(current_year, entry['month'], 1).strftime('%b')  # e.g., "Jan"
+        month_name = datetime(current_year, entry['month'], 1).strftime('%b')
         months.append(month_name)
-        savings_data.append(float(entry['total_saved']))
+        savings_data.append(float(entry['total_saved'] or 0))
 
-    # Forecast next 3 months
     for i in range(1, 4):
-        future_month = (current_month + i) % 12 or 12
+        future_month = (current_month + i - 1) % 12 + 1
         future_month_name = datetime(current_year, future_month, 1).strftime('%b')
-
-        # Assume savings grow based on current monthly budget allocation
         months.append(future_month_name)
-        savings_data.append(savings_data[-1] + float(future_budget) if savings_data else float(future_budget))
+        savings_data.append(float(savings_data[-1] + total_budget if savings_data else total_budget))
 
     return Response({"months": months, "amounts": savings_data}, status=status.HTTP_200_OK)
 
 
-
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_monthly_savings_history(request):
     """Fetch monthly savings history for the user."""
@@ -267,24 +320,21 @@ def get_monthly_savings_history(request):
 
     return Response(history_list)
 
-@api_view(['GET'])
+
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_notifications(request):
     """Fetch unread notifications for the user."""
-    user = request.user
-    notifications = Notifications.objects.filter(user=user, is_read=False).order_by('-created_at')
-
+    notifications = alerts.objects.filter(user=request.user, is_read=False).order_by('-created_at')
     notifications_list = [
-        {"id": n.id, "message": n.message, "created_at": n.created_at.strftime("%Y-%m-%d %H:%M:%S")}
-        for n in notifications
+        {"id": n.id, "message": n.message, "created_at": n.created_at.strftime("%Y-%m-%d %H:%M:%S")} for n in notifications
     ]
-
     return Response(notifications_list)
 
-@api_view(['POST'])
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def mark_notifications_read(request):
     """Mark all notifications as read."""
-    user = request.user
-    Notifications.objects.filter(user=user, is_read=False).update(is_read=True)
+    alerts.objects.filter(user=request.user, is_read=False).update(is_read=True)
     return Response({"message": "Notifications marked as read."})

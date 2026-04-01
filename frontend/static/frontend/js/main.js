@@ -8,6 +8,11 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
 const userDropdownBtn = document.getElementById('userDropdownBtn');
 const userDropdown = document.getElementById('userDropdown');
 
+function getCSRFToken() {
+    return document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+}
+const csrfToken = getCSRFToken();
+
 if (voiceEntryBtn && transactionModal && editAmount && editCategory && editType && saveTransactionBtn && cancelTransactionBtn) {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -274,7 +279,8 @@ if (voiceEntryBtn && transactionModal && editAmount && editCategory && editType 
                 let amountClass = "text-red-600"; // Default to expense
 
                 // Categorizing transactions
-                switch (transaction.category_name.toLowerCase()) {
+                const transactionCategory = (transaction.category_name || 'Uncategorized').toString().toLowerCase();
+                switch (transactionCategory) {
                     case "salary":
                         iconClass = "ri-bank-line text-green-600";
                         bgClass = "bg-green-100";
@@ -477,9 +483,90 @@ if (voiceEntryBtn && transactionModal && editAmount && editCategory && editType 
         }
     }
 
-   
-    
-        async function fetchUpcomingBills() {
+    function addFinanceChatMessage(text, sender) {
+        const chatList = document.getElementById('financeAIChatList');
+        if (!chatList) return;
+
+        const messageClass = sender === 'user' ? 'bg-brand-600 text-white self-end' : 'bg-white text-slate-900';
+        const alignClass = sender === 'user' ? 'justify-end' : 'justify-start';
+
+        chatList.innerHTML += `
+            <div class="flex ${alignClass}">
+                <div class="max-w-[80%] rounded-3xl p-4 shadow-sm ${messageClass}">
+                    <p class="text-sm leading-6">${text}</p>
+                </div>
+            </div>
+        `;
+        chatList.scrollTop = chatList.scrollHeight;
+    }
+
+    async function sendFinanceAIMessage() {
+        const input = document.getElementById('financeAIMessage');
+        if (!input || !input.value.trim()) return;
+
+        const userMessage = input.value.trim();
+        addFinanceChatMessage(userMessage, 'user');
+        input.value = '';
+
+        addFinanceChatMessage('Thinking...', 'assistant');
+        const assistantBubble = document.querySelector('#financeAIChatList > div:last-child div');
+
+        try {
+            const response = await fetch('/insights/finance-chat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({ message: userMessage }),
+            });
+            const result = await response.json();
+            if (assistantBubble) {
+                assistantBubble.innerHTML = result.reply || 'I could not generate a response right now. Please try again.';
+            }
+        } catch (error) {
+            if (assistantBubble) {
+                assistantBubble.innerHTML = 'Sorry, there was a problem sending your message. Please try again.';
+            }
+            console.error('Finance AI chat error:', error);
+        }
+    }
+
+    function showFinanceAIChat(open) {
+        const modal = document.getElementById('financeAIChatModal');
+        if (!modal) return;
+        modal.classList.toggle('hidden', !open);
+        if (open) {
+            const chatList = document.getElementById('financeAIChatList');
+            if (chatList && !chatList.innerHTML.trim()) {
+                addFinanceChatMessage('Hi! I am your finance assistant. Ask me about budgeting, savings, or expense planning.', 'assistant');
+            }
+        }
+    }
+
+    const financeAIButton = document.getElementById('openFinanceAI');
+    const closeFinanceAIButton = document.getElementById('closeFinanceAI');
+    const sendFinanceAIButton = document.getElementById('sendFinanceAIMessage');
+    if (financeAIButton) {
+        financeAIButton.addEventListener('click', () => showFinanceAIChat(true));
+    }
+    if (closeFinanceAIButton) {
+        closeFinanceAIButton.addEventListener('click', () => showFinanceAIChat(false));
+    }
+    if (sendFinanceAIButton) {
+        sendFinanceAIButton.addEventListener('click', sendFinanceAIMessage);
+    }
+
+    const financeAIChatModal = document.getElementById('financeAIChatModal');
+    if (financeAIChatModal) {
+        financeAIChatModal.addEventListener('click', (event) => {
+            if (event.target === financeAIChatModal) {
+                showFinanceAIChat(false);
+            }
+        });
+    }
+
+    async function fetchUpcomingBills() {
             try {
                 const response = await fetch('/api/transactions/upcoming-bills/');
                 const bills = await response.json();
