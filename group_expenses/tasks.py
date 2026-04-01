@@ -4,7 +4,7 @@ from .models import Settlement
 
 @shared_task
 def send_payment_reminders():
-    unsettled = Settlement.objects.filter(is_settled=False)
+    unsettled = Settlement.objects.filter(settled=False)
     for settlement in unsettled:
         send_mail(
             'Group Payment Reminder',

@@ -5,30 +5,25 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from datetime import datetime
-from django.shortcuts import render
 
 
 def group_expenses_view(request):
-    return render(request, 'frontend/group_expenses.html')
+    groups = Group.objects.all()
+    if groups.exists():
+        return redirect('group_expenses:group_dashboard', group_id=groups.first().id)
+    return render(request, 'frontend/group_expenses.html', {'groups': groups, 'group': None})
 
 
 
 # View to render the group dashboard
 def group_dashboard(request, group_id):
     try:
-        # Fetch the group and related data dynamically from the database
         group = Group.objects.get(id=group_id)
-        group_members = GroupMember.objects.filter(group=group)
+        groups = Group.objects.all()
 
-        # Fetch recent expenses and balances dynamically
-        expenses = GroupExpense.objects.filter(group=group).order_by('-date')[:5]  # Fetch the latest 5 expenses
-        balances = Settlement.objects.filter(group=group)  # Fetch all settlements related to the group
-
-        return render(request, 'group_expenses/group_dashboard.html', {
+        return render(request, 'frontend/group_expenses.html', {
+            'groups': groups,
             'group': group,
-            'group_members': group_members,
-            'expenses': expenses,
-            'balances': balances
         })
     except Group.DoesNotExist:
         return render(request, 'error.html', {'error': 'Group not found'})
@@ -37,47 +32,45 @@ def group_dashboard(request, group_id):
 def add_expense(request, group_id):
     if request.method == 'POST':
         description = request.POST.get('description')
-        amount = float(request.POST.get('amount'))
+        amount = float(request.POST.get('amount') or 0)
         category = request.POST.get('category')
         date = request.POST.get('date')
         split_type = request.POST.get('splitType')
         paid_by = request.POST.get('paid_by')  # ID of the member who paid
 
-        # Basic validation
-        if not description or not amount:
+        if not description or amount <= 0:
             return render(request, 'frontend/group_expenses.html', {
-                'error': 'Description and amount are required.'
+                'error': 'Description and amount are required.',
+                'groups': Group.objects.all(),
+                'group': Group.objects.filter(id=group_id).first(),
             })
 
-        # Save the expense
         expense = GroupExpense.objects.create(
+            group_id=group_id,
             description=description,
             amount=amount,
             category=category,
             date=date,
-            split_type=split_type,
+            split_type=split_type or 'equal',
             paid_by_id=paid_by,
-            group_id=group_id  # Store which group the expense belongs to
         )
 
-        # If split type is 'equal', split the expense equally among members
-        if split_type == 'equal':
-            members = GroupMember.objects.filter(group_id=group_id)
-            split_amount = amount / len(members)
+        members = GroupMember.objects.filter(group_id=group_id)
+        expense.split_members.set(members)
 
-            # Create settlements for each member
+        if members.exists():
+            split_amount = amount / members.count()
             for member in members:
                 Settlement.objects.create(
                     group_id=group_id,
                     member_id=member.id,
                     amount=split_amount,
-                    expense=expense
+                    expense=expense,
                 )
 
-        return HttpResponseRedirect(reverse('group_expenses:group_dashboard', args=[group_id]))  # Redirect to group dashboard
+        return HttpResponseRedirect(reverse('group_expenses:group_dashboard', args=[group_id]))
 
-    # If GET request or something else
-    return render(request, 'frontend/group_expenses.html')
+    return redirect('group_expenses:group_dashboard', group_id=group_id)
 
 # ViewSet for managing groups
 class GroupViewSet(viewsets.ModelViewSet):

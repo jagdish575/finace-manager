@@ -13,7 +13,7 @@ class GroupSerializer(serializers.ModelSerializer):
 class GroupExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = GroupExpense
-        fields = ['id', 'group', 'user', 'description', 'category', 'amount', 'created_at']
+        fields = ['id', 'group', 'description', 'category', 'amount', 'date', 'split_type', 'paid_by', 'split_members', 'split_amount']
 
 class GroupMemberSerializer(serializers.ModelSerializer):
     class Meta:
@@ -23,4 +23,4 @@ class GroupMemberSerializer(serializers.ModelSerializer):
 class SettlementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Settlement
-        fields = ['id', 'group', 'payer', 'payee', 'amount', 'razorpay_payment_id', 'is_settled', 'settled_at']
+        fields = ['id', 'group', 'expense', 'member', 'amount', 'settled']

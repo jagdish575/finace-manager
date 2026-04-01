@@ -1,210 +1,221 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
-</head>
-<body class="bg-gray-50">
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200">
-        <div class="flex items-center justify-between px-8 py-4">
-            <!-- Welcome Message -->
-            <div>
-                <h2 id="welcomeMessage" class="text-2xl font-semibold text-gray-900">Welcome back, User</h2>
-                <p id="currentDate" class="text-sm text-gray-500"></p>
-            </div>
-
-            <!-- Right Section: Notifications & User Avatar -->
-            <div class="flex items-center space-x-4">
-                <!-- Notification Icon -->
-                <button id="notificationBtn" class="relative p-2 text-gray-600 hover:text-gray-900">
-                    <div class="w-6 h-6 flex items-center justify-center">
-                        <i class="ri-notification-line"></i>
+{% extends 'frontend/base.html' %}
+{% block title %}Dashboard | WealthWizard{% endblock %}
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<section class="bg-slate-950 text-white pb-24">
+    <div class="relative overflow-hidden">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.25),_transparent_34%)]"></div>
+        <div class="absolute top-0 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-brand-600/20 blur-3xl"></div>
+        <div class="relative mx-auto max-w-7xl px-4 pt-24 pb-16 sm:px-6 lg:px-8">
+            <div class="grid gap-10 lg:grid-cols-[1.6fr_0.9fr] lg:items-start">
+                <div class="space-y-8">
+                    <div class="rounded-[2rem] bg-slate-900/90 p-8 shadow-soft ring-1 ring-white/10 backdrop-blur-xl animate-card">
+                        <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p class="text-sm uppercase tracking-[0.24em] text-brand-200">Welcome back</p>
+                                <h1 class="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Your finance hub is ready.</h1>
+                                <p class="mt-4 max-w-2xl text-slate-300">See your balance, spending, and savings in one polished dashboard built to help you make smarter money decisions.</p>
+                            </div>
+                            <div class="flex flex-wrap gap-3">
+                                <a href="{% url 'add_transaction' %}" class="btn-brand">Add transaction</a>
+                                <a href="{% url 'goals' %}" class="btn-outline-brand">View goals</a>
+                            </div>
+                        </div>
+                        <div class="mt-8 grid gap-4 sm:grid-cols-3">
+                            <div class="rounded-3xl bg-slate-800/80 p-5">
+                                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Balance</p>
+                                <p class="mt-4 text-3xl font-semibold text-white">₹{{ total_balance|floatformat:2 }}</p>
+                                <p class="mt-2 text-sm text-slate-400">Current available balance</p>
+                            </div>
+                            <div class="rounded-3xl bg-slate-800/80 p-5">
+                                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Income</p>
+                                <p class="mt-4 text-3xl font-semibold text-white">₹{{ monthly_income|floatformat:2 }}</p>
+                                <p class="mt-2 text-sm text-slate-400">This month</p>
+                            </div>
+                            <div class="rounded-3xl bg-slate-800/80 p-5">
+                                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Expenses</p>
+                                <p class="mt-4 text-3xl font-semibold text-white">₹{{ monthly_expenses|floatformat:2 }}</p>
+                                <p class="mt-2 text-sm text-slate-400">This month</p>
+                            </div>
+                        </div>
                     </div>
-                    <span id="notificationBadge" class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden"></span>
-                </button>
 
-                <!-- Notification Dropdown -->
-                <div id="notificationDropdown" class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg">
-                    <div id="notificationList" class="p-4"></div>
-                </div>
-
-                <!-- User Profile Dropdown -->
-                <div class="relative">
-                    <button id="userDropdownBtn" class="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                        <img id="userAvatar" src="https://via.placeholder.com/40" class="w-8 h-8 rounded-full" alt="User">
-                    </button>
-                    
-                    <!-- Dropdown Menu -->
-                    <div id="userDropdown" class="hidden absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg">
-                        <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i class="ri-user-line mr-2"></i> Profile
-                        </a>
-                        <a href="/logout" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i class="ri-logout-box-line mr-2"></i> Logout
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Main Content -->
-    <div class="container mx-auto px-6 py-4">
-        <!-- Financial Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <!-- Total Balance -->
-            <div class="bg-white p-6 rounded-lg shadow-sm">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-medium text-gray-500">Total Balance</h3>
-                    <div class="w-8 h-8 bg-primary bg-opacity-10 rounded-full flex items-center justify-center">
-                        <i class="ri-wallet-line text-primary"></i>
-                    </div>
-                </div>
-                <p id="totalBalance" class="text-2xl font-semibold text-gray-900">Loading...</p>
-                <p id="balanceChange" class="text-sm text-green-600 mt-2">
-                    <i class="ri-arrow-up-line"></i>
-                    Loading...
-                </p>
-            </div>
-
-            <!-- Monthly Income -->
-            <div class="bg-white p-6 rounded-lg shadow-sm">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-medium text-gray-500">Monthly Income</h3>
-                    <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                        <i class="ri-arrow-up-circle-line text-green-600"></i>
+                    <div class="grid gap-6 lg:grid-cols-2">
+                        <div class="rounded-[2rem] bg-white p-8 shadow-soft text-slate-950 animate-card">
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <p class="text-sm uppercase tracking-[0.25em] text-slate-500">Savings progress</p>
+                                    <h2 class="mt-3 text-2xl font-semibold">{{ savings_progress|floatformat:0 }}% reached</h2>
+                                </div>
+                                <div class="inline-flex items-center rounded-3xl bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700">On track</div>
+                            </div>
+                            <div class="mt-6 h-3 overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full bg-brand-600" style="width: {{ savings_progress|floatformat:0 }}%"></div>
+                            </div>
+                            <p class="mt-4 text-sm leading-6 text-slate-500">Keep saving more this month to meet your target and unlock better insights.</p>
+                        </div>
+                        <div class="rounded-[2rem] bg-white p-8 shadow-soft text-slate-950 animate-card">
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <p class="text-sm uppercase tracking-[0.25em] text-slate-500">Monthly trend</p>
+                                    <h2 class="mt-3 text-2xl font-semibold">Balance movement</h2>
+                                </div>
+                                <span class="text-sm font-semibold text-slate-700">{{ balance_change|floatformat:2 }}%</span>
+                            </div>
+                            <div class="mt-6 grid gap-4 sm:grid-cols-2">
+                                <div class="rounded-3xl bg-slate-50 p-5">
+                                    <p class="text-sm text-slate-500">Income change</p>
+                                    <p class="mt-2 text-xl font-semibold text-slate-950">{{ income_change|floatformat:2 }}%</p>
+                                </div>
+                                <div class="rounded-3xl bg-slate-50 p-5">
+                                    <p class="text-sm text-slate-500">Expense change</p>
+                                    <p class="mt-2 text-xl font-semibold text-slate-950">{{ expense_change|floatformat:2 }}%</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <p id="monthlyIncome" class="text-2xl font-semibold text-gray-900">Loading...</p>
-                <p id="incomeChange" class="text-sm text-green-600 mt-2">
-                    <i class="ri-arrow-up-line"></i>
-                    Loading...
-                </p>
-            </div>
 
-            <!-- Monthly Expenses -->
-            <div class="bg-white p-6 rounded-lg shadow-sm">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-medium text-gray-500">Monthly Expenses</h3>
-                    <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                        <i class="ri-arrow-down-circle-line text-red-600"></i>
+                <aside class="space-y-6">
+                    <div class="rounded-[2rem] bg-white p-8 shadow-soft text-slate-950">
+                        <div class="flex items-center justify-between gap-4">
+                            <h3 class="text-lg font-semibold">Quick actions</h3>
+                            <span class="text-sm text-slate-500">Fast access</span>
+                        </div>
+                        <div class="mt-6 grid gap-4">
+                            <a href="{% url 'add_transaction' %}" class="block rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-900 transition hover:border-brand-300">Add transaction</a>
+                            <a href="{% url 'goals' %}" class="block rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-900 transition hover:border-brand-300">Review goals</a>
+                            <a href="{% url 'spending_analysis' %}" class="block rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-900 transition hover:border-brand-300">View analysis</a>
+                        </div>
                     </div>
-                </div>
-                <p id="monthlyExpenses" class="text-2xl font-semibold text-gray-900">Loading...</p>
-                <p id="expenseChange" class="text-sm text-red-600 mt-2">
-                    <i class="ri-arrow-down-line"></i>
-                    Loading...
-                </p>
-            </div>
 
-            <!-- Savings Progress -->
-            <div class="bg-white p-6 rounded-lg shadow-sm">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-sm font-medium text-gray-500">Savings Progress</h3>
-                    <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <i class="ri-safe-line text-blue-600"></i>
+                    <div class="rounded-[2rem] bg-white p-8 shadow-soft text-slate-950 animate-card">
+                        <div class="flex items-center justify-between gap-4">
+                            <h3 class="text-lg font-semibold">AI insights</h3>
+                            <span class="text-sm text-brand-700">Live</span>
+                        </div>
+                        <p class="mt-4 text-sm leading-6 text-slate-500">Get proactive recommendations for ways to cut expenses and boost savings.</p>
+                        <div class="mt-6 space-y-4">
+                            <div class="rounded-3xl bg-brand-50 p-4 text-sm text-brand-900">Spend less on subscriptions and save ₹1,200 this month.</div>
+                            <div class="rounded-3xl bg-slate-50 p-4 text-sm text-slate-700">You are 8% ahead of last month’s savings progress.</div>
+                        </div>
                     </div>
-                </div>
-                <p id="savingsProgress" class="text-2xl font-semibold text-gray-900">Loading...</p>
-                <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                    <div id="savingsProgressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%;"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="bg-white p-6 rounded-lg shadow-sm mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-6">Quick Actions</h3>
-            <div class="grid grid-cols-2 gap-4">
-                <button id="voiceEntryBtn" class="flex flex-col items-center justify-center p-4 bg-gray-100 rounded-lg">
-                    <i class="ri-mic-line text-3xl text-gray-600 mb-2"></i>
-                    <span class="text-sm font-medium text-gray-700">Voice Entry</span>
-                </button>
-                <a href="/set-budget" class="flex flex-col items-center justify-center p-4 bg-gray-100 rounded-lg">
-                    <i class="ri-pie-chart-line text-3xl text-gray-600 mb-2"></i>
-                    <span class="text-sm font-medium text-gray-700">Set Budget</span>
-                </a>
-                <a href="/add-transaction" class="flex flex-col items-center justify-center p-4 bg-primary bg-opacity-10 rounded-lg">
-                    <i class="ri-add-circle-line text-3xl text-primary mb-2"></i>
-                    <span class="text-sm font-medium text-primary">Add Transaction</span>
-                </a>
-                <a href="/ai-insights" class="flex flex-col items-center justify-center p-4 bg-gray-100 rounded-lg">
-                    <i class="ri-line-chart-line text-3xl text-gray-600 mb-2"></i>
-                    <span class="text-sm font-medium text-gray-700">Analyze Spending</span>
-                </a>
-            </div>
-        </div>
-
-        <!-- Spending Analysis -->
-        <div class="bg-white p-6 rounded-lg shadow-sm mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-6">Spending Analysis</h3>
-            <div id="spendingChart" class="h-80"></div>
-            <div class="grid grid-cols-2 gap-6 mt-6">
-                <div class="bg-white p-6 rounded-lg shadow-sm">
-                    <h3 class="text-md font-semibold text-gray-900 mb-4">Expense Breakdown by Category</h3>
-                    <div id="expensePieChart" class="h-60"></div>
-                </div>
-                <div class="bg-white p-6 rounded-lg shadow-sm">
-                    <h3 class="text-md font-semibold text-gray-900 mb-4">Monthly Expenses Trend</h3>
-                    <div id="expenseBarChart" class="h-60"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Recent Transactions -->
-        <div class="bg-white p-6 rounded-lg shadow-sm mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-6">Recent Transactions</h3>
-            <div id="transactionList" class="space-y-4"></div>
-        </div>
-
-        <!-- Upcoming Bills -->
-        <div class="bg-white p-6 rounded-lg shadow-sm mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-6">Upcoming Bills</h3>
-            <div id="billsList" class="space-y-4"></div>
-        </div>
-
-        <!-- AI Insights -->
-        <div class="bg-white p-6 rounded-lg shadow-sm mb-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-6">AI Insights</h3>
-            <div id="aiInsightsBox" class="p-4 bg-blue-50 rounded-lg"></div>
-        </div>
-
-        <!-- Savings Goals Tracker -->
-        <div class="p-6 bg-white shadow-lg rounded-lg">
-            <h3 class="font-semibold text-gray-800 mb-4">Savings Goals</h3>
-            <div id="savingsGoals" class="space-y-4"></div>
-        </div>
-    </div>
-
-    <!-- Transaction Confirmation Modal -->
-    <div id="transactionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-        <div class="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Confirm Transaction</h3>
-            <label class="block text-sm text-gray-700 mb-1">Amount</label>
-            <input type="number" id="editAmount" class="w-full p-2 border rounded mb-3" />
-            
-            <label class="block text-sm text-gray-700 mb-1">Category</label>
-            <input type="text" id="editCategory" class="w-full p-2 border rounded mb-3" />
-
-            <label class="block text-sm text-gray-700 mb-1">Transaction Type</label>
-            <select id="editType" class="w-full p-2 border rounded mb-3">
-                <option value="expense">Expense</option>
-                <option value="income">Income</option>
-            </select>
-
-            <div class="flex justify-end space-x-3">
-                <button id="cancelTransaction" class="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-                <button id="saveTransaction" class="px-4 py-2 bg-primary text-white rounded">Save</button>
+                </aside>
             </div>
         </div>
     </div>
+</section>
 
-    <script src="main.js"></script>
-</body>
-</html>
+<section class="bg-slate-100 pb-24 pt-16">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="rounded-[2rem] bg-white p-8 shadow-soft animate-card">
+            <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <p class="text-sm uppercase tracking-[0.3em] text-slate-500">Performance snapshot</p>
+                    <h2 class="mt-2 text-3xl font-semibold text-slate-950">Interactive spending analytics</h2>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <button class="filter-btn rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white" data-period="week">Week</button>
+                    <button class="filter-btn rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-slate-700" data-period="month">Month</button>
+                    <button class="filter-btn rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-slate-700" data-period="year">Year</button>
+                </div>
+            </div>
+            <div class="mt-8 grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+                <div class="rounded-[2rem] bg-slate-950 p-6 text-white">
+                    <div id="spendingChart" class="h-80"></div>
+                </div>
+                <div class="grid gap-6">
+                    <div class="rounded-[2rem] bg-white p-6 shadow-sm">
+                        <h3 class="text-lg font-semibold text-slate-950">Category breakdown</h3>
+                        <div id="expensePieChart" class="h-72"></div>
+                    </div>
+                    <div class="rounded-[2rem] bg-white p-6 shadow-sm">
+                        <h3 class="text-lg font-semibold text-slate-950">Monthly expenses</h3>
+                        <div id="expenseBarChart" class="h-72"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-10 grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
+            <div class="space-y-6">
+                <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                    <div class="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-950">Recent Transactions</h3>
+                            <p class="text-sm text-slate-500">Latest activity from your accounts.</p>
+                        </div>
+                        <a href="{% url 'transactions' %}" class="text-sm font-semibold text-brand-600 hover:text-brand-700">View all</a>
+                    </div>
+                    <div id="transactionList" class="space-y-4"></div>
+                </div>
+                <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                    <div class="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-950">Upcoming Bills</h3>
+                            <p class="text-sm text-slate-500">Keep track of your next payments.</p>
+                        </div>
+                        <span class="text-sm font-semibold text-slate-500">Next 30 days</span>
+                    </div>
+                    <div id="billsList" class="space-y-4"></div>
+                </div>
+            </div>
+            <div class="space-y-6">
+                <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                    <div class="flex items-center justify-between gap-4 mb-6">
+                        <h3 class="text-lg font-semibold text-slate-950">AI Insights</h3>
+                        <span class="text-sm text-brand-700">Suggestions</span>
+                    </div>
+                    <div id="aiInsightsBox" class="space-y-4"></div>
+                </div>
+                <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                    <div class="flex items-center justify-between gap-4 mb-6">
+                        <h3 class="text-lg font-semibold text-slate-950">Savings goals</h3>
+                        <span class="text-sm text-slate-500">Progress</span>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="rounded-3xl bg-slate-50 p-5">
+                            <p class="text-sm text-slate-500">Emergency fund</p>
+                            <div class="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full bg-brand-600" style="width: 68%"></div>
+                            </div>
+                            <p class="mt-3 text-sm text-slate-500">₹34,000 of ₹50,000</p>
+                        </div>
+                        <div class="rounded-3xl bg-slate-50 p-5">
+                            <p class="text-sm text-slate-500">Vacation goal</p>
+                            <div class="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full bg-brand-600" style="width: 42%"></div>
+                            </div>
+                            <p class="mt-3 text-sm text-slate-500">₹8,400 of ₹20,000</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="-mt-24 bg-slate-100 pb-24 pt-16">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="grid gap-6 xl:grid-cols-3">
+            <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                <p class="text-sm uppercase tracking-[0.25em] text-slate-500">Track</p>
+                <h2 class="mt-4 text-2xl font-semibold text-slate-950">Transactions</h2>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Review your latest entries and spot unusual spending instantly.</p>
+            </div>
+            <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                <p class="text-sm uppercase tracking-[0.25em] text-slate-500">Plan</p>
+                <h2 class="mt-4 text-2xl font-semibold text-slate-950">Budget goals</h2>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Set smarter goals and watch your savings climb with visual progress bars.</p>
+            </div>
+            <div class="rounded-[2rem] bg-white p-8 shadow-soft">
+                <p class="text-sm uppercase tracking-[0.25em] text-slate-500">Optimize</p>
+                <h2 class="mt-4 text-2xl font-semibold text-slate-950">Insights</h2>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Use AI-driven trends to reduce overspending and maximize every rupee.</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

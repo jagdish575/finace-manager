@@ -20,30 +20,25 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.conf import settings
 from django.conf.urls.static import static
 
-from django.shortcuts import render
-
-
-
 urlpatterns = [
-    path('api/group-expenses/', include, name='group_expenses'),
     path('admin/', admin.site.urls),
+    path('users/', include('users.urls')),  # Include the users app URLs
 
     # JWT Authentication Routes
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),  # Login
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # Refresh token
 
-    # Group Expenses API Routes
-    path('api/group-expenses/', include('group_expenses.urls')),  # Include the group_expenses URLs
+    # Group Expenses API and frontend routes
+    path('api/group-expenses/', include('group_expenses.api_urls')),
+    path('group-expenses/', include(('group_expenses.urls', 'group_expenses'))),
+    path('admin_dashboard/', include('admin_dashboard.urls')),  # Include admin dashboard URLs
+    path('api/transactions/', include('transactions.urls')),  # Ensure this is correctly included
+    path('api/payments/', include('payments.urls')),
+    path('transactions/', include('transactions.urls')),  
+    path('insights/', include('insights.urls')),
+    path('', include('frontend.urls')),  # Include frontend URLs
     
-    #path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),  # Login
-    #path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # Refresh token
-    #path('api/transactions/', include('transactions.urls')),  # Ensure this is correctly included
-    #path('api/payments/', include('payments.urls')),
-    
-    #path('api/notifications/', include('notifications.urls')),
-    #path('transactions/', include('transactions.urls')),  
-    #path('insights/', include('insights.urls')),
-    #path('admin_dashboard/', include('admin_dashboard.urls')),
+    # path('api/notifications/', include('notifications.urls')),
   
 ]
 

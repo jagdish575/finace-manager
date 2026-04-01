@@ -5,7 +5,10 @@ const editCategory = document.getElementById('editCategory');
 const editType = document.getElementById('editType');
 const saveTransactionBtn = document.getElementById('saveTransaction');
 const cancelTransactionBtn = document.getElementById('cancelTransaction');
+const userDropdownBtn = document.getElementById('userDropdownBtn');
+const userDropdown = document.getElementById('userDropdown');
 
+if (voiceEntryBtn && transactionModal && editAmount && editCategory && editType && saveTransactionBtn && cancelTransactionBtn) {
     if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
@@ -28,7 +31,7 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
             voiceEntryBtn.textContent = "Processing...";
             voiceEntryBtn.disabled = true;
 
-            const response = await fetch('/api/process-voice/', {
+            const response = await fetch('/api/transactions/process-voice-entry/', {
                 method: 'POST',
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ voice_text: voiceText })
@@ -65,7 +68,7 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
             category: editCategory.value
         };
 
-        const response = await fetch('/api/confirm-transaction/', {
+        const response = await fetch('/api/transactions/confirm-voice-transaction/', {
             method: 'POST',
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(transactionData)
@@ -84,16 +87,29 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
     cancelTransactionBtn.addEventListener('click', () => {
         transactionModal.classList.add('hidden');
     });
+}
 
     // Fetch User Data from API
     
     async function fetchUserProfile() {
         try {
-            const response = await fetch('/api/user-profile/');
+            const response = await fetch('/users/api/user-profile/');
             const data = await response.json();
-            document.getElementById('userAvatar').src = data.avatar;
-            document.getElementById('userName').textContent = data.username;
-            document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+            const avatar = document.getElementById('userAvatar');
+            if (avatar && data.avatar) {
+                avatar.src = data.avatar;
+            }
+
+            const welcomeMessage = document.getElementById('welcomeMessage');
+            if (welcomeMessage) {
+                welcomeMessage.textContent = `Welcome back, ${data.username}`;
+            }
+
+            const currentDate = document.getElementById('currentDate');
+            if (currentDate) {
+                currentDate.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+            }
         } catch (error) {
             console.error('Error fetching user profile:', error);
         }
@@ -102,30 +118,78 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
 
 
     // Toggle User Dropdown Menu
-    document.getElementById('userDropdownBtn').addEventListener('click', () => {
-        document.getElementById('userDropdown').classList.toggle('hidden');
-    });
+    if (userDropdownBtn && userDropdown) {
+        userDropdownBtn.addEventListener('click', () => {
+            userDropdown.classList.toggle('hidden');
+        });
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (event) => {
-        const dropdown = document.getElementById('userDropdown');
-        if (!document.getElementById('userDropdownBtn').contains(event.target) && !dropdown.contains(event.target)) {
-            dropdown.classList.add('hidden');
-        }
-    });
-
-    // Set Savings Progress Bar Width
-    document.getElementById('savingsProgressBar').style.width = '{{ savings_progress }}%';
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (event) => {
+            if (!userDropdownBtn.contains(event.target) && !userDropdown.contains(event.target)) {
+                userDropdown.classList.add('hidden');
+            }
+        });
+    }
 
     // Load User Data on Page Load
     fetchUserProfile();
 
-    // Embed Django data into JavaScript variables
-    const spendingData = JSON.parse('{{ spending_data|safe }}');
+    const spendingChartEl = document.getElementById('spendingChart');
+    const expensePieChartEl = document.getElementById('expensePieChart');
+    const expenseBarChartEl = document.getElementById('expenseBarChart');
+    let spendingChart = null;
+    let expensePieChart = null;
+    let expenseBarChart = null;
 
-    const spendingChart = echarts.init(document.getElementById('spendingChart'));
-    const expensePieChart = echarts.init(document.getElementById('expensePieChart'));
-    const expenseBarChart = echarts.init(document.getElementById('expenseBarChart'));
+    if (window.echarts && spendingChartEl && expensePieChartEl && expenseBarChartEl) {
+        spendingChart = echarts.init(spendingChartEl);
+        expensePieChart = echarts.init(expensePieChartEl);
+        expenseBarChart = echarts.init(expenseBarChartEl);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.animate-card').forEach((card, index) => {
+            setTimeout(() => card.classList.add('visible'), index * 90);
+        });
+    });
+
+    async function loadSpendingData(period = 'month') {
+        try {
+            const response = await fetch(`/spending-analysis/?period=${period}`);
+            const data = await response.json();
+            updateCharts(data);
+        } catch (error) {
+            console.error('Error loading spending data:', error);
+        }
+    }
+
+    if (spendingChart && expensePieChart && expenseBarChart) {
+        loadSpendingData();
+    }
+    fetchDashboardMetrics();
+
+    async function fetchDashboardMetrics() {
+        try {
+            const response = await fetch('/dashboard-data/');
+            const data = await response.json();
+
+            const totalBalance = document.getElementById('totalBalance');
+            const monthlyIncome = document.getElementById('monthlyIncome');
+            const monthlyExpenses = document.getElementById('monthlyExpenses');
+            const balanceChange = document.getElementById('balanceChange');
+            const incomeChange = document.getElementById('incomeChange');
+            const expenseChange = document.getElementById('expenseChange');
+
+            if (totalBalance) totalBalance.textContent = `₹${data.total_balance.toFixed(2)}`;
+            if (monthlyIncome) monthlyIncome.textContent = `₹${data.monthly_income.toFixed(2)}`;
+            if (monthlyExpenses) monthlyExpenses.textContent = `₹${Math.abs(data.monthly_expenses).toFixed(2)}`;
+            if (balanceChange) balanceChange.textContent = `${data.balance_change}% since last month`;
+            if (incomeChange) incomeChange.textContent = `${data.income_change}% from last month`;
+            if (expenseChange) expenseChange.textContent = `${data.expense_change}% from last month`;
+        } catch (error) {
+            console.error('Error fetching dashboard metrics:', error);
+        }
+    }
 
     function updateCharts(data) {
         // Line Chart (Income vs. Expenses)
@@ -161,26 +225,36 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
         });
     }
 
-    // Load data on page load
-    updateCharts(spendingData);
-
     // Event listeners for filtering
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.replace('bg-primary', 'bg-gray-100'));
-            btn.classList.replace('bg-gray-100', 'bg-primary');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    if (filterButtons.length > 0) {
+        const activateFilterButton = (button) => {
+            filterButtons.forEach(b => {
+                b.classList.remove('bg-brand-600', 'text-white', 'active');
+                b.classList.add('bg-gray-100', 'text-slate-700');
+            });
+            button.classList.remove('bg-gray-100', 'text-slate-700');
+            button.classList.add('bg-brand-600', 'text-white', 'active');
+        };
 
-            fetch(`/spending-analysis/?period=${btn.getAttribute('data-period')}`)
-                .then(response => response.json())
-                .then(data => updateCharts(data));
+        filterButtons.forEach((btn, index) => {
+            if (index === 1) {
+                activateFilterButton(btn);
+            }
+            btn.addEventListener('click', () => {
+                activateFilterButton(btn);
+                fetch(`/spending-analysis/?period=${btn.getAttribute('data-period')}`)
+                    .then(response => response.json())
+                    .then(data => updateCharts(data));
+            });
         });
-    });
+    }
 
     // Resize charts on window resize
     window.addEventListener('resize', () => {
-        spendingChart.resize();
-        expensePieChart.resize();
-        expenseBarChart.resize();
+        if (spendingChart) spendingChart.resize();
+        if (expensePieChart) expensePieChart.resize();
+        if (expenseBarChart) expenseBarChart.resize();
     });
 
 
@@ -341,13 +415,16 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
         }
     }
 
-    // Fetch transactions on page load
-    fetchTransactions();
+    const transactionListElement = document.getElementById('transactionList');
+    if (transactionListElement) {
+        // Fetch transactions on page load
+        fetchTransactions();
+    }
 
 
     async function fetchAIInsights() {
         try {
-            const response = await fetch('/api/ai-insights/');
+            const response = await fetch('/insights/ai-insights/');
             const data = await response.json();
 
             document.getElementById('aiInsightsBox').innerHTML = '';
@@ -378,10 +455,13 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
         }
     }
 
-    fetchAIInsights();
+    const aiInsightsBoxEl = document.getElementById('aiInsightsBox');
+    if (aiInsightsBoxEl) {
+        fetchAIInsights();
+    }
 
     async function acceptSuggestedBudget(category, newLimit) {
-        const response = await fetch('/api/accept-suggested-budget/', {
+        const response = await fetch('/insights/accept-suggested-budget/', {
             method: 'POST',
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ category, new_limit: newLimit })
@@ -401,7 +481,7 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
     
         async function fetchUpcomingBills() {
             try {
-                const response = await fetch('/api/upcoming-bills/');
+                const response = await fetch('/api/transactions/upcoming-bills/');
                 const bills = await response.json();
                 const billsList = document.getElementById('billsList');
     
@@ -427,12 +507,15 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
             }
         }
     
-        fetchUpcomingBills();
+        const billsListEl = document.getElementById('billsList');
+        if (billsListEl) {
+            fetchUpcomingBills();
+        }
     
         
             async function fetchUserNotifications() {
                 try {
-                    const response = await fetch('/api/user-notifications/');
+                    const response = await fetch('/users/api/user-notifications/');
                     const data = await response.json();
                     const notificationList = document.getElementById('notificationList');
                     const notificationBadge = document.getElementById('notificationBadge');
@@ -458,11 +541,16 @@ const cancelTransactionBtn = document.getElementById('cancelTransaction');
             }
         
             // Show/Hide Notifications
-            document.getElementById('notificationBtn').addEventListener('click', () => {
-                document.getElementById('notificationDropdown').classList.toggle('hidden');
-                fetchUserNotifications();
-            });
+            const notificationBtn = document.getElementById('notificationBtn');
+            if (notificationBtn && document.getElementById('notificationDropdown')) {
+                notificationBtn.addEventListener('click', () => {
+                    document.getElementById('notificationDropdown').classList.toggle('hidden');
+                    fetchUserNotifications();
+                });
+            }
         
-            fetchUserNotifications(); // Load on page load
+            if (notificationBtn) {
+                fetchUserNotifications(); // Load on page load
+            }
         
            

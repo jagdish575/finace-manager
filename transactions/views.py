@@ -237,7 +237,7 @@ class TransactionListCreateView(generics.ListCreateAPIView):
         queryset = Transaction.objects.filter(user_id=user.id).order_by('-date')
 
         # Convert transactions to user’s preferred currency
-        user_profile = UsersProfile.objects.filter(user_id=user.id).first()
+        user_profile = Profile.objects.filter(user_id=user.id).first()
         user_currency = user_profile.preferred_currency if user_profile else 'USD'
         base_currency = 'USD'  # Assuming transactions are stored in USD
         

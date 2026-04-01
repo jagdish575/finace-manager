@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import uuid
-from datetime import datetime
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -22,7 +22,7 @@ class Transaction(models.Model):
     description = models.TextField(blank=True, null=True)
     date = models.DateField()
     currency = models.CharField(max_length=3, choices=[('USD', 'USD'), ('EUR', 'EUR'), ('INR', 'INR')], default='INR')
-    created_at = models.DateTimeField(default=datetime.now)
+    created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

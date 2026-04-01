@@ -1,0 +1,112 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+.env
+.env.*
+python/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+
+# Node/npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+npm-debug.log
+
+# VS Code
+.vscode/
+.history/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# PyCharm
+.idea/
+*.iml
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Backup files
+*.bak
+*.swp
+*.swo
+*~
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Django migrations
+*.pyc
+*.pyo
+
+# Database files
+*.sqlite3
+
+# Logs and runtime files
+*.log
+*.pid
+*.pid.lock
+
+# Redis
+dump.rdb
+
+# TensorFlow / model files
+*.h5
+*.hdf5
+
+# OS generated files
+.DS_Store
+
+# OneDrive
+~$*
+
+# Backup files
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Frontend build output
+dist/
+build/
